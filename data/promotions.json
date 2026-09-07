@@ -1,0 +1,28 @@
+{
+  "promotions": [
+    {
+      "id": "promo-001",
+      "name": "Reduced Agency Fee for New Listings",
+      "rule": "Sellers who list a property for sale through Nadeem Real Estate Consultant pay a reduced agency commission instead of the standard rate.",
+      "discountValue": "1% off the standard agency commission",
+      "eligibilityConditions": "Applies only to new sale listings signed during the promotional period; not combinable with other fee reductions.",
+      "active": true
+    },
+    {
+      "id": "promo-002",
+      "name": "First Month Rent Incentive",
+      "rule": "Tenants who sign a new 12-month lease on a participating rental property receive a discount on their first month's rent.",
+      "discountValue": "50% off the first month's rent",
+      "eligibilityConditions": "Applies only to new leases of 12 months or longer on properties marked as participating rentals; tenant must complete standard application and screening.",
+      "active": true
+    },
+    {
+      "id": "promo-003",
+      "name": "Winter Villa Clearance Offer",
+      "rule": "A limited set of luxury villa listings are offered at a reduced list price for buyers who make an offer during the promotional window.",
+      "discountValue": "3% off the listed sale price",
+      "eligibilityConditions": "Applies only to select luxury villa listings designated for this offer; offer must be submitted before the promotion end date; subject to seller acceptance.",
+      "active": false
+    }
+  ]
+}
