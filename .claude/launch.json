@@ -9,6 +9,14 @@
         "dev"
       ],
       "port": 3000
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": [
+        "backend/server.js"
+      ],
+      "port": 3000
     }
   ]
 }

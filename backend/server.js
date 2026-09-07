@@ -95,6 +95,39 @@ const propertiesContext =
 
 const fullSystemPrompt = systemPrompt + "\n\n" + propertiesContext;
 
+const UNAVAILABLE_STATUSES = new Set(["sold", "rented", "unavailable", "off market"]);
+
+function getAvailableProperties() {
+  const allProperties = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "data", "properties.json"), "utf8")
+  ).properties;
+
+  return allProperties.filter((property) => {
+    const availability = (property.availability || "").toLowerCase();
+    return availability && !UNAVAILABLE_STATUSES.has(availability);
+  });
+}
+
+const tools = [
+  {
+    name: "getProperties",
+    description:
+      "Get the list of real estate properties that are currently available (for sale or for rent). " +
+      "Use this whenever the user asks what properties are available.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+];
+
+async function runToolCall(toolUseBlock) {
+  if (toolUseBlock.name === "getProperties") {
+    return getAvailableProperties();
+  }
+  return { error: `Unknown tool: ${toolUseBlock.name}` };
+}
+
 app.post("/api/chat", async (req, res) => {
   const { message, conversationHistory } = req.body;
 
@@ -103,12 +136,39 @@ app.post("/api/chat", async (req, res) => {
   }
 
   try {
-    const response = await anthropic.messages.create({
+    const messages = [...(conversationHistory || []), { role: "user", content: message }];
+
+    let response = await anthropic.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1024,
       system: fullSystemPrompt,
-      messages: [...(conversationHistory || []), { role: "user", content: message }],
+      messages,
+      tools,
     });
+
+    while (response.stop_reason === "tool_use") {
+      const toolUseBlocks = response.content.filter((block) => block.type === "tool_use");
+      messages.push({ role: "assistant", content: response.content });
+
+      const toolResults = [];
+      for (const block of toolUseBlocks) {
+        const result = await runToolCall(block);
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: JSON.stringify(result),
+        });
+      }
+      messages.push({ role: "user", content: toolResults });
+
+      response = await anthropic.messages.create({
+        model: "claude-sonnet-5",
+        max_tokens: 1024,
+        system: fullSystemPrompt,
+        messages,
+        tools,
+      });
+    }
 
     const reply = response.content
       .filter((block) => block.type === "text")
