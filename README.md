@@ -41,6 +41,9 @@ Open <http://localhost:3000>.
   send email or persist to a database yet.
 - The chat widget is still the original mock; it isn't wired to the
   Anthropic API yet.
+- Customer inquiries and property viewing requests are stored locally in
+  `data/inquiries.json` for development/testing only. This must be replaced
+  with a proper production database before production deployment.
 
 `.env.example` lists every integration key referenced in the codebase, with
 notes on which tier (Must Have / Highly Recommended / Optional) each one is
