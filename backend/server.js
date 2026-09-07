@@ -142,6 +142,107 @@ function addPropertyToInquiry(input, inquiryState) {
   };
 }
 
+const ALLOWED_INQUIRY_TYPES = new Set(["viewing", "information", "contact"]);
+
+function updatePropertyInquiry(input, inquiryState) {
+  if (!input || typeof input !== "object") {
+    return { success: false, error: "No update fields were provided." };
+  }
+
+  if (!inquiryState.propertyId && !input.propertyId) {
+    return {
+      success: false,
+      error: "There is no inquiry in progress yet. Use addPropertyToInquiry to start one first.",
+    };
+  }
+
+  const updates = {};
+
+  if (input.propertyId !== undefined) {
+    if (typeof input.propertyId !== "string" || !input.propertyId.trim()) {
+      return { success: false, error: "propertyId must be a non-empty string." };
+    }
+    const property = readProperties().find((p) => p.id === input.propertyId);
+    if (!property) {
+      return { success: false, error: `No property found with id "${input.propertyId}".` };
+    }
+    if (!isAvailable(property)) {
+      return {
+        success: false,
+        error: `"${property.name}" is not currently available (${property.availability}).`,
+      };
+    }
+    updates.propertyId = property.id;
+    updates.propertyName = property.name;
+  }
+
+  if (input.inquiryType !== undefined) {
+    const inquiryType = typeof input.inquiryType === "string" ? input.inquiryType.toLowerCase() : "";
+    if (!ALLOWED_INQUIRY_TYPES.has(inquiryType)) {
+      return {
+        success: false,
+        error: `inquiryType must be one of: ${[...ALLOWED_INQUIRY_TYPES].join(", ")}.`,
+      };
+    }
+    updates.inquiryType = inquiryType;
+  }
+
+  if (input.preferredDate !== undefined) {
+    if (typeof input.preferredDate !== "string" || !input.preferredDate.trim()) {
+      return { success: false, error: "preferredDate must be a non-empty string." };
+    }
+    updates.preferredDate = input.preferredDate.trim();
+  }
+
+  if (input.preferredTime !== undefined) {
+    if (typeof input.preferredTime !== "string" || !input.preferredTime.trim()) {
+      return { success: false, error: "preferredTime must be a non-empty string." };
+    }
+    updates.preferredTime = input.preferredTime.trim();
+  }
+
+  if (input.message !== undefined) {
+    if (typeof input.message !== "string" || !input.message.trim()) {
+      return { success: false, error: "message must be a non-empty string." };
+    }
+    updates.message = input.message.trim();
+  }
+
+  let customerDetailsUpdates = null;
+  if (input.customerDetails !== undefined) {
+    const isPlainObject =
+      typeof input.customerDetails === "object" &&
+      input.customerDetails !== null &&
+      !Array.isArray(input.customerDetails);
+    if (!isPlainObject) {
+      return { success: false, error: "customerDetails must be an object with name, email, and/or phone." };
+    }
+    customerDetailsUpdates = {};
+    for (const field of ["name", "email", "phone"]) {
+      if (input.customerDetails[field] !== undefined) {
+        if (typeof input.customerDetails[field] !== "string" || !input.customerDetails[field].trim()) {
+          return { success: false, error: `customerDetails.${field} must be a non-empty string.` };
+        }
+        customerDetailsUpdates[field] = input.customerDetails[field].trim();
+      }
+    }
+    if (Object.keys(customerDetailsUpdates).length === 0) {
+      return { success: false, error: "customerDetails must include at least one of name, email, or phone." };
+    }
+  }
+
+  if (Object.keys(updates).length === 0 && !customerDetailsUpdates) {
+    return { success: false, error: "No recognized update fields were provided." };
+  }
+
+  Object.assign(inquiryState, updates);
+  if (customerDetailsUpdates) {
+    Object.assign(inquiryState.customerDetails, customerDetailsUpdates);
+  }
+
+  return { success: true, inquiryState };
+}
+
 const tools = [
   {
     name: "getProperties",
@@ -173,6 +274,41 @@ const tools = [
       required: ["propertyId"],
     },
   },
+  {
+    name: "updatePropertyInquiry",
+    description:
+      "Update fields on the user's existing session inquiry (the one started with " +
+      "addPropertyToInquiry). Only include fields the user actually specified — never guess. " +
+      "Changing propertyId is validated against the property listings the same way as " +
+      "addPropertyToInquiry (must exist and be currently available). This does not confirm or " +
+      "submit the inquiry, and never changes the confirmed status. Returns the updated inquiry " +
+      "state, or a clear error if the update is invalid, so you can ask the user for clarification.",
+    input_schema: {
+      type: "object",
+      properties: {
+        propertyId: {
+          type: "string",
+          description: "New property id to switch the inquiry to, e.g. \"prop-005\".",
+        },
+        inquiryType: {
+          type: "string",
+          description: "One of: viewing, information, contact.",
+        },
+        preferredDate: { type: "string", description: "Customer-provided preferred date." },
+        preferredTime: { type: "string", description: "Customer-provided preferred time." },
+        message: { type: "string", description: "Customer-provided message or preferences." },
+        customerDetails: {
+          type: "object",
+          description: "Any of the customer's contact details the user provided.",
+          properties: {
+            name: { type: "string" },
+            email: { type: "string" },
+            phone: { type: "string" },
+          },
+        },
+      },
+    },
+  },
 ];
 
 async function runToolCall(toolUseBlock, inquiryState) {
@@ -181,6 +317,9 @@ async function runToolCall(toolUseBlock, inquiryState) {
   }
   if (toolUseBlock.name === "addPropertyToInquiry") {
     return addPropertyToInquiry(toolUseBlock.input, inquiryState);
+  }
+  if (toolUseBlock.name === "updatePropertyInquiry") {
+    return updatePropertyInquiry(toolUseBlock.input, inquiryState);
   }
   return { error: `Unknown tool: ${toolUseBlock.name}` };
 }
