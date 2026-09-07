@@ -243,6 +243,32 @@ function updatePropertyInquiry(input, inquiryState) {
   return { success: true, inquiryState };
 }
 
+function removePropertyFromInquiry(input, inquiryState) {
+  const propertyId = input && input.propertyId;
+  if (!propertyId || typeof propertyId !== "string") {
+    return { success: false, error: "propertyId is required." };
+  }
+
+  const property = readProperties().find((p) => p.id === propertyId);
+  if (!property) {
+    return { success: false, error: `No property found with id "${propertyId}".` };
+  }
+
+  if (inquiryState.propertyId !== propertyId) {
+    return {
+      success: false,
+      error: `"${property.name}" is not currently part of this inquiry.`,
+    };
+  }
+
+  inquiryState.propertyId = null;
+  inquiryState.propertyName = null;
+  inquiryState.status = "draft";
+  inquiryState.confirmed = false;
+
+  return { success: true, removedPropertyId: property.id, inquiryState };
+}
+
 const tools = [
   {
     name: "getProperties",
@@ -309,6 +335,24 @@ const tools = [
       },
     },
   },
+  {
+    name: "removePropertyFromInquiry",
+    description:
+      "Remove a specific property from the user's session inquiry, identified by its exact " +
+      "property id. Use this only when the user explicitly asks to remove or drop a property " +
+      "from their inquiry. This does not confirm or submit anything. Returns a clear error if " +
+      "the property id doesn't exist, or if it isn't currently part of the inquiry.",
+    input_schema: {
+      type: "object",
+      properties: {
+        propertyId: {
+          type: "string",
+          description: "The exact id of the property to remove, e.g. \"prop-005\".",
+        },
+      },
+      required: ["propertyId"],
+    },
+  },
 ];
 
 async function runToolCall(toolUseBlock, inquiryState) {
@@ -320,6 +364,9 @@ async function runToolCall(toolUseBlock, inquiryState) {
   }
   if (toolUseBlock.name === "updatePropertyInquiry") {
     return updatePropertyInquiry(toolUseBlock.input, inquiryState);
+  }
+  if (toolUseBlock.name === "removePropertyFromInquiry") {
+    return removePropertyFromInquiry(toolUseBlock.input, inquiryState);
   }
   return { error: `Unknown tool: ${toolUseBlock.name}` };
 }
