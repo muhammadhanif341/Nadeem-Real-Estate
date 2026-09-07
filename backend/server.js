@@ -269,6 +269,20 @@ function removePropertyFromInquiry(input, inquiryState) {
   return { success: true, removedPropertyId: property.id, inquiryState };
 }
 
+function viewInquiry(inquiryState) {
+  return {
+    propertyId: inquiryState.propertyId,
+    propertyName: inquiryState.propertyName,
+    inquiryType: inquiryState.inquiryType,
+    preferredDate: inquiryState.preferredDate,
+    preferredTime: inquiryState.preferredTime,
+    customerDetails: { ...inquiryState.customerDetails },
+    message: inquiryState.message,
+    status: inquiryState.status,
+    confirmed: inquiryState.confirmed,
+  };
+}
+
 const tools = [
   {
     name: "getProperties",
@@ -353,6 +367,18 @@ const tools = [
       required: ["propertyId"],
     },
   },
+  {
+    name: "viewInquiry",
+    description:
+      "Get a read-only snapshot of the user's current session inquiry state — selected property, " +
+      "inquiry type, preferred date/time, customer details provided so far, message, status, and " +
+      "confirmation status. Use this when the user asks to see, review, or confirm what's currently " +
+      "in their inquiry. Does not modify anything and never includes prices, totals, or discounts.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];
 
 async function runToolCall(toolUseBlock, inquiryState) {
@@ -367,6 +393,9 @@ async function runToolCall(toolUseBlock, inquiryState) {
   }
   if (toolUseBlock.name === "removePropertyFromInquiry") {
     return removePropertyFromInquiry(toolUseBlock.input, inquiryState);
+  }
+  if (toolUseBlock.name === "viewInquiry") {
+    return viewInquiry(inquiryState);
   }
   return { error: `Unknown tool: ${toolUseBlock.name}` };
 }
