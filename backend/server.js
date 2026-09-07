@@ -97,15 +97,49 @@ const fullSystemPrompt = systemPrompt + "\n\n" + propertiesContext;
 
 const UNAVAILABLE_STATUSES = new Set(["sold", "rented", "unavailable", "off market"]);
 
-function getAvailableProperties() {
-  const allProperties = JSON.parse(
+function readProperties() {
+  return JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", "data", "properties.json"), "utf8")
   ).properties;
+}
 
-  return allProperties.filter((property) => {
-    const availability = (property.availability || "").toLowerCase();
-    return availability && !UNAVAILABLE_STATUSES.has(availability);
-  });
+function isAvailable(property) {
+  const availability = (property.availability || "").toLowerCase();
+  return Boolean(availability) && !UNAVAILABLE_STATUSES.has(availability);
+}
+
+function getAvailableProperties() {
+  return readProperties().filter(isAvailable);
+}
+
+function addPropertyToInquiry(input, inquiryState) {
+  const propertyId = input && input.propertyId;
+  if (!propertyId || typeof propertyId !== "string") {
+    return { success: false, error: "propertyId is required." };
+  }
+
+  const property = readProperties().find((p) => p.id === propertyId);
+  if (!property) {
+    return { success: false, error: `No property found with id "${propertyId}".` };
+  }
+
+  if (!isAvailable(property)) {
+    return {
+      success: false,
+      error: `"${property.name}" is not currently available (${property.availability}).`,
+    };
+  }
+
+  inquiryState.propertyId = property.id;
+  inquiryState.propertyName = property.name;
+  inquiryState.status = "draft";
+  inquiryState.confirmed = false;
+
+  return {
+    success: true,
+    property: { id: property.id, name: property.name, availability: property.availability },
+    inquiryState,
+  };
 }
 
 const tools = [
@@ -119,11 +153,34 @@ const tools = [
       properties: {},
     },
   },
+  {
+    name: "addPropertyToInquiry",
+    description:
+      "Add a specific, currently-available property to the user's session inquiry state, identified " +
+      "by its exact property id (e.g. from getProperties). Only call this once you know which exact " +
+      "property the user means. This only records which property the inquiry is about — it does not " +
+      "confirm or submit anything. The result includes the current inquiry state so you can see what " +
+      "information (inquiry type, customer details, preferred date/time, message) is still missing " +
+      "and ask the user for it instead of guessing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        propertyId: {
+          type: "string",
+          description: "The exact id of the property, e.g. \"prop-005\".",
+        },
+      },
+      required: ["propertyId"],
+    },
+  },
 ];
 
-async function runToolCall(toolUseBlock) {
+async function runToolCall(toolUseBlock, inquiryState) {
   if (toolUseBlock.name === "getProperties") {
     return getAvailableProperties();
+  }
+  if (toolUseBlock.name === "addPropertyToInquiry") {
+    return addPropertyToInquiry(toolUseBlock.input, inquiryState);
   }
   return { error: `Unknown tool: ${toolUseBlock.name}` };
 }
@@ -152,7 +209,7 @@ app.post("/api/chat", async (req, res) => {
 
       const toolResults = [];
       for (const block of toolUseBlocks) {
-        const result = await runToolCall(block);
+        const result = await runToolCall(block, req.inquiryState);
         toolResults.push({
           type: "tool_result",
           tool_use_id: block.id,
