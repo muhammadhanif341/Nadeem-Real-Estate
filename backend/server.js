@@ -262,6 +262,11 @@ function updatePropertyInquiry(input, inquiryState) {
     Object.assign(inquiryState.customerDetails, customerDetailsUpdates);
   }
 
+  if (inquiryState.confirmed) {
+    inquiryState.confirmed = false;
+    inquiryState.status = "draft";
+  }
+
   return { success: true, inquiryState };
 }
 
@@ -339,6 +344,71 @@ function viewInquiry(inquiryState) {
     status: inquiryState.status,
     confirmed: inquiryState.confirmed,
   };
+}
+
+function getInquiryConfirmationSummary(inquiryState) {
+  const requirements = getInquiryRequirements(inquiryState);
+
+  let propertyLocation = null;
+  if (inquiryState.propertyId) {
+    const property = readProperties().find((p) => p.id === inquiryState.propertyId);
+    propertyLocation = property ? property.location : null;
+  }
+
+  return {
+    readyForConfirmation: requirements.readyToSubmit,
+    missingRequired: requirements.missingRequired,
+    confirmed: inquiryState.confirmed,
+    summary: {
+      propertyName: inquiryState.propertyName,
+      propertyLocation,
+      inquiryType: inquiryState.inquiryType,
+      preferredDate: inquiryState.preferredDate,
+      preferredTime: inquiryState.preferredTime,
+      customerName: requirements.customerName,
+      customerPhone: requirements.customerPhone,
+      customerUnit: requirements.customerUnit,
+      instructions: inquiryState.message,
+    },
+    notes:
+      "Only present this summary once readyForConfirmation is true; if missingRequired is non-empty, " +
+      "ask only for those fields first, then call this again. Show only the non-null fields in " +
+      "summary — never invent a value for a null one. propertyLocation is the verified property " +
+      "address/location from data/properties.json; if it is null, say the exact location isn't " +
+      "available rather than guessing one, and never ask the customer to supply the property's own " +
+      "address. After showing this summary, you must get a clear, explicit confirmation (e.g. 'yes', " +
+      "'confirm', 'that's correct') before calling confirmInquiry — vague replies like 'okay' or " +
+      "'sounds good' are not sufficient, and silence is never confirmation. If the customer asks to " +
+      "change something, call updatePropertyInquiry or removePropertyFromInquiry for only that change, " +
+      "then call this tool again and get explicit re-confirmation before proceeding.",
+  };
+}
+
+function confirmInquiry(inquiryState) {
+  const requirements = getInquiryRequirements(inquiryState);
+  if (!requirements.readyToSubmit) {
+    return {
+      success: false,
+      error: "The inquiry is missing required information and cannot be confirmed yet.",
+      missingRequired: requirements.missingRequired,
+    };
+  }
+
+  const property = readProperties().find((p) => p.id === inquiryState.propertyId);
+  if (!property) {
+    return { success: false, error: "The selected property could not be found in the current listings." };
+  }
+  if (!isAvailable(property)) {
+    return {
+      success: false,
+      error: `"${property.name}" is no longer available (${property.availability}). Please choose a different property before confirming.`,
+    };
+  }
+
+  inquiryState.confirmed = true;
+  inquiryState.status = "confirmed";
+
+  return { success: true, inquiryState };
 }
 
 const RESIDENTIAL_PROPERTY_TYPES = new Set(["apartment", "house", "villa", "townhouse", "condo"]);
@@ -606,6 +676,36 @@ const tools = [
     },
   },
   {
+    name: "getInquiryConfirmationSummary",
+    description:
+      "Get the final confirmation summary for the current inquiry/viewing request — property name, " +
+      "verified property location (from data/properties.json), inquiry type, preferred date/time, " +
+      "customer name/phone/unit, and any viewing instructions, using only what's actually stored in " +
+      "the session. Call this before asking for final confirmation, and again after any correction. " +
+      "Read this tool's own `notes` field for exactly how to present the summary and what counts as " +
+      "explicit confirmation. Read-only — never modifies or submits anything by itself.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "confirmInquiry",
+    description:
+      "Finalize the current inquiry/viewing request. Only call this after you have shown the full " +
+      "confirmation summary (from getInquiryConfirmationSummary) and the customer has given a clear, " +
+      "explicit confirmation such as 'yes', 'confirm', or 'that's correct' — never for vague replies " +
+      "like 'okay' or 'sounds good', and never based on silence or the absence of a correction. If the " +
+      "customer indicates anything is wrong, do not call this — use updatePropertyInquiry or " +
+      "removePropertyFromInquiry instead, then re-show the summary and get explicit confirmation again. " +
+      "Fails with a clear error (and never confirms) if required information is still missing or the " +
+      "selected property is no longer available.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "recommendProperties",
     description:
       "Suggest up to 2 currently-available properties from the listings that are genuinely relevant " +
@@ -659,6 +759,12 @@ async function runToolCall(toolUseBlock, inquiryState) {
   }
   if (toolUseBlock.name === "getInquiryRequirements") {
     return getInquiryRequirements(inquiryState);
+  }
+  if (toolUseBlock.name === "getInquiryConfirmationSummary") {
+    return getInquiryConfirmationSummary(inquiryState);
+  }
+  if (toolUseBlock.name === "confirmInquiry") {
+    return confirmInquiry(inquiryState);
   }
   if (toolUseBlock.name === "recommendProperties") {
     return recommendProperties(inquiryState);
