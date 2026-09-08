@@ -35,6 +35,7 @@ function createEmptyInquiryState() {
     total: null,
     confirmed: false,
     status: "draft",
+    declinedPropertyIds: [],
   };
 }
 
@@ -283,6 +284,145 @@ function viewInquiry(inquiryState) {
   };
 }
 
+const RESIDENTIAL_PROPERTY_TYPES = new Set(["apartment", "house", "villa", "townhouse", "condo"]);
+
+function propertyCategory(property) {
+  const type = (property.propertyType || "").toLowerCase();
+  return RESIDENTIAL_PROPERTY_TYPES.has(type) ? "residential" : "commercial";
+}
+
+const MIN_RELEVANCE_SCORE = 3;
+
+function scorePropertySimilarity(candidate, reference) {
+  let score = 0;
+
+  if (candidate.propertyType && candidate.propertyType === reference.propertyType) {
+    score += 3;
+  }
+
+  if (candidate.availability && candidate.availability === reference.availability) {
+    score += 2;
+  }
+
+  if (candidate.location && reference.location) {
+    const candidateLocation = candidate.location.toLowerCase();
+    const referenceLocation = reference.location.toLowerCase();
+    if (candidateLocation === referenceLocation) {
+      score += 3;
+    } else {
+      const candidateParts = candidateLocation.split(",").map((part) => part.trim());
+      const referenceParts = referenceLocation.split(",").map((part) => part.trim());
+      if (candidateParts.some((part) => referenceParts.includes(part))) {
+        score += 2;
+      }
+    }
+  }
+
+  if (typeof candidate.bedrooms === "number" && typeof reference.bedrooms === "number") {
+    const diff = Math.abs(candidate.bedrooms - reference.bedrooms);
+    if (diff === 0) score += 2;
+    else if (diff === 1) score += 1;
+  }
+
+  if (typeof candidate.bathrooms === "number" && typeof reference.bathrooms === "number") {
+    if (candidate.bathrooms === reference.bathrooms) {
+      score += 1;
+    }
+  }
+
+  if (typeof candidate.price === "number" && typeof reference.price === "number" && reference.price > 0) {
+    const ratio = Math.abs(candidate.price - reference.price) / reference.price;
+    if (ratio <= 0.15) score += 2;
+    else if (ratio <= 0.3) score += 1;
+  }
+
+  if (typeof candidate.area === "number" && typeof reference.area === "number" && reference.area > 0) {
+    const ratio = Math.abs(candidate.area - reference.area) / reference.area;
+    if (ratio <= 0.2) score += 1;
+  }
+
+  if (Array.isArray(candidate.features) && Array.isArray(reference.features)) {
+    const referenceFeatures = new Set(reference.features.map((feature) => feature.toLowerCase()));
+    const overlap = candidate.features.filter((feature) =>
+      referenceFeatures.has(feature.toLowerCase())
+    ).length;
+    score += overlap;
+  }
+
+  return score;
+}
+
+function recommendProperties(inquiryState) {
+  if (!inquiryState.propertyId) {
+    return {
+      success: false,
+      error: "There is no property selected in the inquiry yet, so there's no basis for a recommendation.",
+    };
+  }
+
+  const properties = readProperties();
+  const referenceProperty = properties.find((p) => p.id === inquiryState.propertyId);
+  if (!referenceProperty) {
+    return { success: false, error: "The selected property could not be found in the current listings." };
+  }
+
+  const declinedPropertyIds = new Set(inquiryState.declinedPropertyIds || []);
+
+  const referenceCategory = propertyCategory(referenceProperty);
+
+  const recommendations = properties
+    .filter(
+      (property) =>
+        property.id !== referenceProperty.id &&
+        isAvailable(property) &&
+        !declinedPropertyIds.has(property.id) &&
+        propertyCategory(property) === referenceCategory
+    )
+    .map((property) => ({ property, score: scorePropertySimilarity(property, referenceProperty) }))
+    .filter((entry) => entry.score >= MIN_RELEVANCE_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map((entry) => ({
+      id: entry.property.id,
+      name: entry.property.name,
+      propertyType: entry.property.propertyType,
+      location: entry.property.location,
+      price: entry.property.price,
+      bedrooms: entry.property.bedrooms,
+      bathrooms: entry.property.bathrooms,
+      area: entry.property.area,
+      features: entry.property.features,
+      availability: entry.property.availability,
+    }));
+
+  if (recommendations.length === 0) {
+    return { success: true, recommendations: [], message: "No genuinely relevant alternatives were found." };
+  }
+
+  return { success: true, recommendations };
+}
+
+function declineRecommendation(input, inquiryState) {
+  const propertyId = input && input.propertyId;
+  if (!propertyId || typeof propertyId !== "string") {
+    return { success: false, error: "propertyId is required." };
+  }
+
+  const property = readProperties().find((p) => p.id === propertyId);
+  if (!property) {
+    return { success: false, error: `No property found with id "${propertyId}".` };
+  }
+
+  if (!Array.isArray(inquiryState.declinedPropertyIds)) {
+    inquiryState.declinedPropertyIds = [];
+  }
+  if (!inquiryState.declinedPropertyIds.includes(propertyId)) {
+    inquiryState.declinedPropertyIds.push(propertyId);
+  }
+
+  return { success: true, declinedPropertyId: property.id };
+}
+
 const tools = [
   {
     name: "getProperties",
@@ -379,6 +519,40 @@ const tools = [
       properties: {},
     },
   },
+  {
+    name: "recommendProperties",
+    description:
+      "Suggest up to 2 currently-available properties from the listings that are genuinely relevant " +
+      "to the user's current inquiry, based on similarity to the selected property (type, location, " +
+      "price, bedrooms/bathrooms, size, and features). Use this when the user asks for suggestions or " +
+      "alternatives, or when offering a relevant alternative is natural. Never call this to modify the " +
+      "inquiry — recommendations are suggestions only; only use addPropertyToInquiry/updatePropertyInquiry " +
+      "if the user explicitly asks to switch to a recommended property. Automatically excludes the " +
+      "currently selected property and any property the user has already declined this session. " +
+      "May return zero recommendations if nothing is genuinely relevant — do not force one.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "declineRecommendation",
+    description:
+      "Record that the user explicitly declined a property that was previously recommended (e.g. " +
+      "\"no, I'm not interested\" or \"skip that one\"), identified by its exact property id. This only " +
+      "prevents that property from being suggested again this session via recommendProperties — it " +
+      "does not modify the inquiry itself.",
+    input_schema: {
+      type: "object",
+      properties: {
+        propertyId: {
+          type: "string",
+          description: "The exact id of the declined property, e.g. \"prop-005\".",
+        },
+      },
+      required: ["propertyId"],
+    },
+  },
 ];
 
 async function runToolCall(toolUseBlock, inquiryState) {
@@ -396,6 +570,12 @@ async function runToolCall(toolUseBlock, inquiryState) {
   }
   if (toolUseBlock.name === "viewInquiry") {
     return viewInquiry(inquiryState);
+  }
+  if (toolUseBlock.name === "recommendProperties") {
+    return recommendProperties(inquiryState);
+  }
+  if (toolUseBlock.name === "declineRecommendation") {
+    return declineRecommendation(toolUseBlock.input, inquiryState);
   }
   return { error: `Unknown tool: ${toolUseBlock.name}` };
 }
