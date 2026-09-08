@@ -344,6 +344,9 @@ function getInquiryRequirements(inquiryState) {
   if (!inquiryState.propertyId) {
     missingRequired.push("propertyId");
   }
+  if (!inquiryState.inquiryType) {
+    missingRequired.push("inquiryType");
+  }
   if (!customerName) {
     missingRequired.push("customerName");
   }
@@ -354,6 +357,7 @@ function getInquiryRequirements(inquiryState) {
   return {
     propertyId: inquiryState.propertyId,
     propertyName: inquiryState.propertyName,
+    inquiryType: inquiryState.inquiryType,
     preferredDate: inquiryState.preferredDate,
     preferredTime: inquiryState.preferredTime,
     customerName,
@@ -365,11 +369,13 @@ function getInquiryRequirements(inquiryState) {
     missingRequired,
     readyToSubmit: missingRequired.length === 0,
     notes:
-      "preferredTime, customerAddress, customerUnit, message/viewing instructions, and promotionId are " +
-      "optional and never block readiness — only ask for them if genuinely relevant, and never invent " +
-      "them. Only ask the user for fields listed in missingRequired — never ask again for anything " +
-      "already set here (including the property's own address/location, which always comes from the " +
-      "verified property data, never from the customer).",
+      "inquiryType must be one of: viewing, information, contact — ask the user which kind of inquiry " +
+      "this is if it's still missing; never guess or default it. preferredTime, customerAddress, " +
+      "customerUnit, message/viewing instructions, and promotionId are optional and never block " +
+      "readiness — only ask for them if genuinely relevant, and never invent them. Only ask the user " +
+      "for fields listed in missingRequired — never ask again for anything already set here (including " +
+      "the property's own address/location, which always comes from the verified property data, never " +
+      "from the customer).",
   };
 }
 
@@ -938,9 +944,10 @@ const tools = [
     name: "getInquiryRequirements",
     description:
       "Check what's still needed before the user's current viewing request/inquiry could be " +
-      "submitted: a selected property, the customer's name, and the customer's phone number are " +
-      "required; preferred viewing date/time, the customer's own address/unit, any viewing " +
-      "instructions, and an applied promotion are optional and never block readiness. Use this before asking the user for any " +
+      "submitted: a selected property, the inquiry type (viewing, information, or contact), the " +
+      "customer's name, and the customer's phone number are required; preferred viewing date/time, " +
+      "the customer's own address/unit, any viewing instructions, and an applied promotion are " +
+      "optional and never block readiness. Use this before asking the user for any " +
       "inquiry details, so you only ask for fields listed in the response's missingRequired array and " +
       "never re-ask for information that's already set (this includes the property's own address, " +
       "which comes from the verified property data, not the customer). Read-only — does not modify or " +
