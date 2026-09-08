@@ -1091,6 +1091,84 @@ async function runToolCall(toolUseBlock, inquiryState) {
   return { error: `Unknown tool: ${toolUseBlock.name}` };
 }
 
+// Staff dashboard: minimal read/update endpoints over data/inquiries.json.
+// Only confirmed inquiries are ever in that file (see confirmInquiry) —
+// these endpoints only read it and change the `status` field, never any
+// other inquiry data.
+const INQUIRY_STATUSES = new Set(["NEW", "CONTACTED", "VIEWING_SCHEDULED", "COMPLETED", "CANCELLED"]);
+
+// Forward-only workflow: NEW -> CONTACTED -> VIEWING_SCHEDULED -> COMPLETED,
+// with CANCELLED reachable from any non-terminal state. COMPLETED and
+// CANCELLED are terminal — no further transitions are allowed from either.
+const INQUIRY_STATUS_TRANSITIONS = {
+  NEW: new Set(["CONTACTED", "CANCELLED"]),
+  CONTACTED: new Set(["VIEWING_SCHEDULED", "CANCELLED"]),
+  VIEWING_SCHEDULED: new Set(["COMPLETED", "CANCELLED"]),
+  COMPLETED: new Set(),
+  CANCELLED: new Set(),
+};
+
+app.get("/api/inquiries", (req, res) => {
+  try {
+    const inquiries = readInquiriesFile();
+    const properties = readProperties();
+    // Only ever adds a verified propertyName lookup for display — never
+    // changes or invents any field actually stored in data/inquiries.json.
+    const enriched = inquiries.map((inquiry) => {
+      const property = properties.find((p) => p.id === inquiry.propertyId);
+      return { ...inquiry, propertyName: property ? property.name : null };
+    });
+    res.json({ inquiries: enriched });
+  } catch (error) {
+    console.error("Failed to load inquiries:", error);
+    res.status(500).json({ error: "Failed to load inquiries." });
+  }
+});
+
+app.patch("/api/inquiries/:inquiryId/status", (req, res) => {
+  const { inquiryId } = req.params;
+  const { status } = req.body || {};
+
+  if (!status || typeof status !== "string" || !INQUIRY_STATUSES.has(status)) {
+    return res.status(400).json({
+      error: `status must be one of: ${[...INQUIRY_STATUSES].join(", ")}.`,
+    });
+  }
+
+  let inquiries;
+  try {
+    inquiries = readInquiriesFile();
+  } catch (error) {
+    console.error("Failed to load inquiries:", error);
+    return res.status(500).json({ error: "Failed to load inquiries." });
+  }
+
+  const index = inquiries.findIndex((inquiry) => inquiry.inquiryId === inquiryId);
+  if (index === -1) {
+    return res.status(404).json({ error: `No inquiry found with id "${inquiryId}".` });
+  }
+
+  const current = inquiries[index];
+  const allowedNextStatuses = INQUIRY_STATUS_TRANSITIONS[current.status] || new Set();
+  if (!allowedNextStatuses.has(status)) {
+    return res.status(400).json({
+      error: `Cannot change status from "${current.status}" to "${status}".`,
+    });
+  }
+
+  const updated = { ...current, status };
+  inquiries[index] = updated;
+
+  try {
+    fs.writeFileSync(INQUIRIES_FILE_PATH, JSON.stringify(inquiries, null, 2) + "\n", "utf8");
+  } catch (error) {
+    console.error("Failed to save status change:", error);
+    return res.status(500).json({ error: "Failed to save the status change." });
+  }
+
+  res.json({ inquiry: updated });
+});
+
 app.post("/api/chat", async (req, res) => {
   const { message, conversationHistory } = req.body;
 
