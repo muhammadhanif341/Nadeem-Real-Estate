@@ -550,6 +550,92 @@ function declineRecommendation(input, inquiryState) {
   return { success: true, declinedPropertyId: property.id };
 }
 
+// Inquiry-related fee configuration. The project currently defines no real
+// viewing/application/service fee or tax rate — see prompts/system-prompt.md
+// ("There is no discount, fee, commission, or financing data anywhere in the
+// project"). Every amount is 0 until an authorized business value replaces
+// it here; the calculation logic stays deterministic either way, and a
+// property's listed price is never read or used by any of it.
+const FEE_CONFIG = {
+  currency: "USD",
+  taxRate: 0, // decimal fraction, e.g. 0.05 for 5%. 0 = not applicable.
+  feesByInquiryType: {
+    viewing: 0,
+    information: 0,
+    contact: 0,
+  },
+};
+
+function readPromotions() {
+  return JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "data", "promotions.json"), "utf8")
+  ).promotions;
+}
+
+function round2(amount) {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+// A promotion can only discount a calculated inquiry fee if it is active AND
+// explicitly declares itself machine-applicable to fees via `appliesToFee:
+// true` plus a numeric `feeDiscountPercent` (0-100). The real promotions in
+// data/promotions.json describe commission/rent/sale-price adjustments in
+// free text — not inquiry fees — and none carry those fields, so none of
+// them can discount a fee today. That is correct behavior, not a bug: this
+// never infers a numeric discount from prose, and never trusts a discount
+// value the model might supply directly.
+function resolvePromotionForFee(promotionId, baseFee) {
+  if (!promotionId) {
+    return { promotionApplied: null, discount: 0, reason: null };
+  }
+  const promotion = readPromotions().find(
+    (p) => p.id.toLowerCase() === promotionId.toLowerCase()
+  );
+  if (!promotion) {
+    return { promotionApplied: null, discount: 0, reason: `Unknown promotion "${promotionId}".` };
+  }
+  if (!promotion.active) {
+    return {
+      promotionApplied: null,
+      discount: 0,
+      reason: `Promotion "${promotion.name}" is not currently active.`,
+    };
+  }
+  const percent = promotion.feeDiscountPercent;
+  if (promotion.appliesToFee !== true || typeof percent !== "number" || !(percent >= 0 && percent <= 100)) {
+    return {
+      promotionApplied: null,
+      discount: 0,
+      reason: `Promotion "${promotion.name}" does not apply to inquiry fees.`,
+    };
+  }
+  return { promotionApplied: promotion.id, discount: round2(baseFee * (percent / 100)), reason: null };
+}
+
+function calculateInquiryFee(input, inquiryState) {
+  const baseFee = FEE_CONFIG.feesByInquiryType[inquiryState.inquiryType] || 0;
+  const tax = round2(baseFee * FEE_CONFIG.taxRate);
+
+  const promotionId =
+    input && typeof input.promotionId === "string" && input.promotionId.trim()
+      ? input.promotionId.trim()
+      : null;
+  const { promotionApplied, discount, reason } = resolvePromotionForFee(promotionId, baseFee);
+
+  const finalFee = Math.max(0, round2(baseFee + tax - discount));
+
+  return {
+    success: true,
+    baseFee,
+    tax,
+    discount,
+    finalFee,
+    currency: FEE_CONFIG.currency,
+    promotionApplied,
+    ...(reason ? { promotionNote: reason } : {}),
+  };
+}
+
 const tools = [
   {
     name: "getProperties",
@@ -722,6 +808,30 @@ const tools = [
     },
   },
   {
+    name: "calculateInquiryFee",
+    description:
+      "Deterministically calculate any fee, tax, and discount that applies to the current inquiry, " +
+      "using only backend configuration and data/promotions.json — never estimate, invent, or perform " +
+      "this arithmetic yourself. A property's listed price is informational only and is never read or " +
+      "treated as a payable total by this tool. Currently every inquiry type has a configured fee of 0 " +
+      "unless the project defines a real one. Only pass promotionId if the customer explicitly names a " +
+      "specific promotion; never guess or invent one. Report exactly the baseFee, tax, discount, and " +
+      "finalFee values this tool returns — do not adjust, round, or recompute them yourself. An unknown, " +
+      "inactive, or ineligible promotion always returns discount 0 with a promotionNote explaining why — " +
+      "relay that note to the customer rather than claiming a discount was applied.",
+    input_schema: {
+      type: "object",
+      properties: {
+        promotionId: {
+          type: "string",
+          description:
+            "The exact promotion id/code the customer explicitly mentioned, e.g. \"promo-002\". Omit " +
+            "if the customer didn't mention one.",
+        },
+      },
+    },
+  },
+  {
     name: "declineRecommendation",
     description:
       "Record that the user explicitly declined a property that was previously recommended (e.g. " +
@@ -771,6 +881,9 @@ async function runToolCall(toolUseBlock, inquiryState) {
   }
   if (toolUseBlock.name === "declineRecommendation") {
     return declineRecommendation(toolUseBlock.input, inquiryState);
+  }
+  if (toolUseBlock.name === "calculateInquiryFee") {
+    return calculateInquiryFee(toolUseBlock.input, inquiryState);
   }
   return { error: `Unknown tool: ${toolUseBlock.name}` };
 }
