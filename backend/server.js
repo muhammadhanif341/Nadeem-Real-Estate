@@ -270,6 +270,32 @@ function removePropertyFromInquiry(input, inquiryState) {
   return { success: true, removedPropertyId: property.id, inquiryState };
 }
 
+function getInquiryRequirements(inquiryState) {
+  const customerName = (inquiryState.customerDetails && inquiryState.customerDetails.name) || null;
+
+  const missingRequired = [];
+  if (!inquiryState.propertyId) {
+    missingRequired.push("propertyId");
+  }
+  if (!customerName) {
+    missingRequired.push("customerName");
+  }
+
+  return {
+    propertyId: inquiryState.propertyId,
+    propertyName: inquiryState.propertyName,
+    preferredDate: inquiryState.preferredDate,
+    preferredTime: inquiryState.preferredTime,
+    customerName,
+    missingRequired,
+    readyToSubmit: missingRequired.length === 0,
+    notes:
+      "preferredTime is optional and never blocks readiness. Only ask the user for fields listed " +
+      "in missingRequired — never ask again for propertyId, preferredDate, preferredTime, or " +
+      "customerName once they are already set here.",
+  };
+}
+
 function viewInquiry(inquiryState) {
   return {
     propertyId: inquiryState.propertyId,
@@ -520,6 +546,21 @@ const tools = [
     },
   },
   {
+    name: "getInquiryRequirements",
+    description:
+      "Check what's still needed before the user's current viewing request/inquiry could be " +
+      "submitted: the customer's name is required, a selected property is required, and preferred " +
+      "viewing date/time are optional and never block readiness. Use this before asking the user for " +
+      "any inquiry details, so you only ask for fields listed in the response's missingRequired array " +
+      "and never re-ask for information that's already set. Read-only — does not modify or submit " +
+      "anything, and readyToSubmit being true does NOT mean the inquiry is confirmed or submitted; " +
+      "explicit user confirmation is still required before that.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "recommendProperties",
     description:
       "Suggest up to 2 currently-available properties from the listings that are genuinely relevant " +
@@ -570,6 +611,9 @@ async function runToolCall(toolUseBlock, inquiryState) {
   }
   if (toolUseBlock.name === "viewInquiry") {
     return viewInquiry(inquiryState);
+  }
+  if (toolUseBlock.name === "getInquiryRequirements") {
+    return getInquiryRequirements(inquiryState);
   }
   if (toolUseBlock.name === "recommendProperties") {
     return recommendProperties(inquiryState);
