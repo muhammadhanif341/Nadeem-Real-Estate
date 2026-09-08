@@ -35,6 +35,7 @@ function createEmptyInquiryState() {
     message: null,
     discount: null,
     total: null,
+    promotionId: null,
     confirmed: false,
     status: "draft",
     declinedPropertyIds: [],
@@ -217,6 +218,17 @@ function updatePropertyInquiry(input, inquiryState) {
     updates.message = input.message.trim();
   }
 
+  if (input.promotionId !== undefined) {
+    if (typeof input.promotionId !== "string" || !input.promotionId.trim()) {
+      return { success: false, error: "promotionId must be a non-empty string." };
+    }
+    const { promotion, error } = findEligibleFeePromotion(input.promotionId.trim());
+    if (!promotion) {
+      return { success: false, error };
+    }
+    updates.promotionId = promotion.id;
+  }
+
   let customerDetailsUpdates = null;
   if (input.customerDetails !== undefined) {
     const isPlainObject =
@@ -321,14 +333,15 @@ function getInquiryRequirements(inquiryState) {
     customerAddress: (inquiryState.customerDetails && inquiryState.customerDetails.address) || null,
     customerUnit: (inquiryState.customerDetails && inquiryState.customerDetails.unit) || null,
     message: inquiryState.message,
+    promotionId: inquiryState.promotionId || null,
     missingRequired,
     readyToSubmit: missingRequired.length === 0,
     notes:
-      "preferredTime, customerAddress, customerUnit, and message/viewing instructions are optional " +
-      "and never block readiness — only ask for them if genuinely relevant, and never invent them. " +
-      "Only ask the user for fields listed in missingRequired — never ask again for anything already " +
-      "set here (including the property's own address/location, which always comes from the verified " +
-      "property data, never from the customer).",
+      "preferredTime, customerAddress, customerUnit, message/viewing instructions, and promotionId are " +
+      "optional and never block readiness — only ask for them if genuinely relevant, and never invent " +
+      "them. Only ask the user for fields listed in missingRequired — never ask again for anything " +
+      "already set here (including the property's own address/location, which always comes from the " +
+      "verified property data, never from the customer).",
   };
 }
 
@@ -349,19 +362,44 @@ function viewInquiry(inquiryState) {
 function getInquiryConfirmationSummary(inquiryState) {
   const requirements = getInquiryRequirements(inquiryState);
 
-  let propertyLocation = null;
+  let property = null;
   if (inquiryState.propertyId) {
-    const property = readProperties().find((p) => p.id === inquiryState.propertyId);
-    propertyLocation = property ? property.location : null;
+    property = readProperties().find((p) => p.id === inquiryState.propertyId) || null;
   }
+
+  let promotion = null;
+  if (inquiryState.promotionId) {
+    const resolved = findEligibleFeePromotion(inquiryState.promotionId);
+    if (resolved.promotion) {
+      promotion = {
+        id: resolved.promotion.id,
+        name: resolved.promotion.name,
+        discountValue: resolved.promotion.discountValue,
+        eligibilityStatus: "active and eligible",
+      };
+    }
+    // If it's no longer valid, promotion stays null here — the fee
+    // calculation's own promotionNote (below) explains why, rather than
+    // this tool inventing a promotion summary for something not applied.
+  }
+
+  const fee = calculateInquiryFee({}, inquiryState);
 
   return {
     readyForConfirmation: requirements.readyToSubmit,
     missingRequired: requirements.missingRequired,
     confirmed: inquiryState.confirmed,
     summary: {
-      propertyName: inquiryState.propertyName,
-      propertyLocation,
+      property: property && {
+        id: property.id,
+        name: property.name,
+        location: property.location,
+        propertyType: property.propertyType,
+        bedrooms: property.bedrooms,
+        bathrooms: property.bathrooms,
+        area: property.area,
+        listingPrice: property.price,
+      },
       inquiryType: inquiryState.inquiryType,
       preferredDate: inquiryState.preferredDate,
       preferredTime: inquiryState.preferredTime,
@@ -369,18 +407,36 @@ function getInquiryConfirmationSummary(inquiryState) {
       customerPhone: requirements.customerPhone,
       customerUnit: requirements.customerUnit,
       instructions: inquiryState.message,
+      promotion,
+      fees: {
+        baseFee: fee.baseFee,
+        tax: fee.tax,
+        discount: fee.discount,
+        finalFee: fee.finalFee,
+        currency: fee.currency,
+        hasApplicableFee: fee.hasApplicableFee,
+      },
     },
     notes:
       "Only present this summary once readyForConfirmation is true; if missingRequired is non-empty, " +
-      "ask only for those fields first, then call this again. Show only the non-null fields in " +
-      "summary — never invent a value for a null one. propertyLocation is the verified property " +
-      "address/location from data/properties.json; if it is null, say the exact location isn't " +
-      "available rather than guessing one, and never ask the customer to supply the property's own " +
-      "address. After showing this summary, you must get a clear, explicit confirmation (e.g. 'yes', " +
-      "'confirm', 'that's correct') before calling confirmInquiry — vague replies like 'okay' or " +
-      "'sounds good' are not sufficient, and silence is never confirmation. If the customer asks to " +
-      "change something, call updatePropertyInquiry or removePropertyFromInquiry for only that change, " +
-      "then call this tool again and get explicit re-confirmation before proceeding.",
+      "ask only for those fields first, then call this again. Show only the non-null fields — never " +
+      "invent a value for a null one. property fields are the verified data from data/properties.json; " +
+      "if property is null, say the details aren't available rather than guessing, and never ask the " +
+      "customer to supply the property's own address. property.listingPrice is the property's verified " +
+      "listing price — always label it as the listing price, never as an amount due or payable total; " +
+      "the only amount actually owed is fees.finalFee. This is a real-estate inquiry, not an order: " +
+      "never mention quantities, cart items, or delivery. promotion is included only when a promotion " +
+      "the customer applied via updatePropertyInquiry is still active and eligible — if it is null, do " +
+      "not mention any promotion even if the customer previously named one (updatePropertyInquiry would " +
+      "already have told them if it was rejected as unknown, inactive, or ineligible). fees are the " +
+      "exact deterministic values returned by the backend calculation — never recompute, round, or " +
+      "adjust them yourself; if hasApplicableFee is false, tell the customer there is no inquiry fee " +
+      "rather than presenting 0 as if it were a real total. After showing this summary, you must get a " +
+      "clear, explicit confirmation (e.g. 'yes', 'confirm', 'that's correct') before calling " +
+      "confirmInquiry — vague replies like 'okay' or 'sounds good' are not sufficient, and silence is " +
+      "never confirmation. If the customer asks to change something, call updatePropertyInquiry or " +
+      "removePropertyFromInquiry for only that change, then call this tool again (which recalculates " +
+      "fees/promotion automatically) and get explicit re-confirmation before proceeding.",
   };
 }
 
@@ -583,43 +639,54 @@ function round2(amount) {
 // free text — not inquiry fees — and none carry those fields, so none of
 // them can discount a fee today. That is correct behavior, not a bug: this
 // never infers a numeric discount from prose, and never trusts a discount
-// value the model might supply directly.
-function resolvePromotionForFee(promotionId, baseFee) {
-  if (!promotionId) {
-    return { promotionApplied: null, discount: 0, reason: null };
-  }
+// value the model might supply directly. Shared by updatePropertyInquiry
+// (validates before storing a promotion on the inquiry) and the fee
+// calculation below (re-validates at calculation time, since a stored
+// promotion could have since gone inactive).
+function findEligibleFeePromotion(promotionId) {
   const promotion = readPromotions().find(
     (p) => p.id.toLowerCase() === promotionId.toLowerCase()
   );
   if (!promotion) {
-    return { promotionApplied: null, discount: 0, reason: `Unknown promotion "${promotionId}".` };
+    return { promotion: null, error: `No promotion found with id "${promotionId}".` };
   }
   if (!promotion.active) {
-    return {
-      promotionApplied: null,
-      discount: 0,
-      reason: `Promotion "${promotion.name}" is not currently active.`,
-    };
+    return { promotion: null, error: `Promotion "${promotion.name}" is not currently active.` };
   }
   const percent = promotion.feeDiscountPercent;
   if (promotion.appliesToFee !== true || typeof percent !== "number" || !(percent >= 0 && percent <= 100)) {
-    return {
-      promotionApplied: null,
-      discount: 0,
-      reason: `Promotion "${promotion.name}" does not apply to inquiry fees.`,
-    };
+    return { promotion: null, error: `Promotion "${promotion.name}" does not apply to inquiry fees.` };
   }
-  return { promotionApplied: promotion.id, discount: round2(baseFee * (percent / 100)), reason: null };
+  return { promotion, error: null };
+}
+
+function resolvePromotionForFee(promotionId, baseFee) {
+  if (!promotionId) {
+    return { promotionApplied: null, discount: 0, reason: null };
+  }
+  const { promotion, error } = findEligibleFeePromotion(promotionId);
+  if (!promotion) {
+    return { promotionApplied: null, discount: 0, reason: error };
+  }
+  return {
+    promotionApplied: promotion.id,
+    discount: round2(baseFee * (promotion.feeDiscountPercent / 100)),
+    reason: null,
+  };
 }
 
 function calculateInquiryFee(input, inquiryState) {
   const baseFee = FEE_CONFIG.feesByInquiryType[inquiryState.inquiryType] || 0;
   const tax = round2(baseFee * FEE_CONFIG.taxRate);
 
-  const promotionId =
+  const explicitPromotionId =
     input && typeof input.promotionId === "string" && input.promotionId.trim()
       ? input.promotionId.trim()
       : null;
+  // Falls back to whatever promotion is already stored on the inquiry (set
+  // via updatePropertyInquiry) so this always reflects the inquiry's
+  // currently applied promotion unless a different one is explicitly given.
+  const promotionId = explicitPromotionId || inquiryState.promotionId || null;
   const { promotionApplied, discount, reason } = resolvePromotionForFee(promotionId, baseFee);
 
   const finalFee = Math.max(0, round2(baseFee + tax - discount));
@@ -631,6 +698,7 @@ function calculateInquiryFee(input, inquiryState) {
     discount,
     finalFee,
     currency: FEE_CONFIG.currency,
+    hasApplicableFee: baseFee > 0 || tax > 0,
     promotionApplied,
     ...(reason ? { promotionNote: reason } : {}),
   };
@@ -694,6 +762,15 @@ const tools = [
           description: "Customer-provided message, preferences, or optional viewing instructions " +
             "(e.g. preferred entrance, accessibility needs, gate/building access notes). Never invent.",
         },
+        promotionId: {
+          type: "string",
+          description:
+            "The exact promotion id/code the customer explicitly wants applied to this inquiry, e.g. " +
+            "\"promo-002\". Only include if the customer explicitly named a promotion — never guess or " +
+            "invent one. Validated against data/promotions.json; rejected with a clear error if the " +
+            "promotion is unknown, inactive, or not eligible for inquiry fees, so you can relay that " +
+            "to the customer instead of applying it.",
+        },
         customerDetails: {
           type: "object",
           description:
@@ -749,8 +826,8 @@ const tools = [
     description:
       "Check what's still needed before the user's current viewing request/inquiry could be " +
       "submitted: a selected property, the customer's name, and the customer's phone number are " +
-      "required; preferred viewing date/time, the customer's own address/unit, and any viewing " +
-      "instructions are optional and never block readiness. Use this before asking the user for any " +
+      "required; preferred viewing date/time, the customer's own address/unit, any viewing " +
+      "instructions, and an applied promotion are optional and never block readiness. Use this before asking the user for any " +
       "inquiry details, so you only ask for fields listed in the response's missingRequired array and " +
       "never re-ask for information that's already set (this includes the property's own address, " +
       "which comes from the verified property data, not the customer). Read-only — does not modify or " +
@@ -764,12 +841,15 @@ const tools = [
   {
     name: "getInquiryConfirmationSummary",
     description:
-      "Get the final confirmation summary for the current inquiry/viewing request — property name, " +
-      "verified property location (from data/properties.json), inquiry type, preferred date/time, " +
-      "customer name/phone/unit, and any viewing instructions, using only what's actually stored in " +
-      "the session. Call this before asking for final confirmation, and again after any correction. " +
-      "Read this tool's own `notes` field for exactly how to present the summary and what counts as " +
-      "explicit confirmation. Read-only — never modifies or submits anything by itself.",
+      "Get the complete, final confirmation summary for the current inquiry/viewing request: full " +
+      "verified property details (id, name, location, type, bedrooms, bathrooms, area, listing price — " +
+      "from data/properties.json), inquiry type, preferred date/time, customer name/phone/unit, any " +
+      "viewing instructions, the currently applied promotion (only if still active and eligible), and " +
+      "the deterministic fee/tax/discount breakdown — using only what's actually stored in the session " +
+      "plus backend-verified data. Call this before asking for final confirmation, and again after any " +
+      "correction (it automatically recalculates fees/promotion). Read this tool's own `notes` field " +
+      "for exactly how to present the summary and what counts as explicit confirmation. Read-only — " +
+      "never modifies or submits anything by itself.",
     input_schema: {
       type: "object",
       properties: {},
@@ -814,8 +894,10 @@ const tools = [
       "using only backend configuration and data/promotions.json — never estimate, invent, or perform " +
       "this arithmetic yourself. A property's listed price is informational only and is never read or " +
       "treated as a payable total by this tool. Currently every inquiry type has a configured fee of 0 " +
-      "unless the project defines a real one. Only pass promotionId if the customer explicitly names a " +
-      "specific promotion; never guess or invent one. Report exactly the baseFee, tax, discount, and " +
+      "unless the project defines a real one. If promotionId is omitted, this automatically uses " +
+      "whatever promotion is already applied to the inquiry (set via updatePropertyInquiry) if any. " +
+      "Only pass promotionId explicitly if the customer names a different specific promotion right now; " +
+      "never guess or invent one. Report exactly the baseFee, tax, discount, and " +
       "finalFee values this tool returns — do not adjust, round, or recompute them yourself. An unknown, " +
       "inactive, or ineligible promotion always returns discount 0 with a promotionNote explaining why — " +
       "relay that note to the customer rather than claiming a discount was applied.",
