@@ -38,6 +38,7 @@ function createEmptyInquiryState() {
     promotionId: null,
     confirmed: false,
     summaryAcknowledged: false,
+    savedInquiryId: null,
     status: "draft",
     declinedPropertyIds: [],
   };
@@ -117,6 +118,20 @@ function getAvailableProperties() {
   return readProperties().filter(isAvailable);
 }
 
+const INQUIRIES_FILE_PATH = path.join(__dirname, "..", "data", "inquiries.json");
+
+function readInquiriesFile() {
+  const raw = fs.readFileSync(INQUIRIES_FILE_PATH, "utf8");
+  const parsed = raw.trim() ? JSON.parse(raw) : [];
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function appendInquiryRecord(record) {
+  const inquiries = readInquiriesFile();
+  inquiries.push(record);
+  fs.writeFileSync(INQUIRIES_FILE_PATH, JSON.stringify(inquiries, null, 2) + "\n", "utf8");
+}
+
 function addPropertyToInquiry(input, inquiryState) {
   const propertyId = input && input.propertyId;
   if (!propertyId || typeof propertyId !== "string") {
@@ -140,6 +155,7 @@ function addPropertyToInquiry(input, inquiryState) {
   inquiryState.status = "draft";
   inquiryState.confirmed = false;
   inquiryState.summaryAcknowledged = false;
+  inquiryState.savedInquiryId = null;
 
   return {
     success: true,
@@ -279,8 +295,11 @@ function updatePropertyInquiry(input, inquiryState) {
   // Any successful update invalidates whatever summary was last shown, so the
   // confirmation gate (see confirmInquiry) requires a fresh
   // getInquiryConfirmationSummary call — and a new explicit confirmation —
-  // before this inquiry can be confirmed again.
+  // before this inquiry can be confirmed again. It also invalidates any
+  // prior saved record: a later confirmation must persist a fresh inquiry
+  // record reflecting the correction, not silently reuse the old one.
   inquiryState.summaryAcknowledged = false;
+  inquiryState.savedInquiryId = null;
   if (inquiryState.confirmed) {
     inquiryState.confirmed = false;
     inquiryState.status = "draft";
@@ -312,6 +331,7 @@ function removePropertyFromInquiry(input, inquiryState) {
   inquiryState.status = "draft";
   inquiryState.confirmed = false;
   inquiryState.summaryAcknowledged = false;
+  inquiryState.savedInquiryId = null;
 
   return { success: true, removedPropertyId: property.id, inquiryState };
 }
@@ -364,6 +384,7 @@ function viewInquiry(inquiryState) {
     message: inquiryState.message,
     status: inquiryState.status,
     confirmed: inquiryState.confirmed,
+    inquiryId: inquiryState.savedInquiryId,
   };
 }
 
@@ -496,10 +517,65 @@ function confirmInquiry(inquiryState) {
     };
   }
 
+  // Idempotency: if this exact inquiry was already confirmed and persisted,
+  // and nothing has changed since (any change would already have cleared
+  // confirmed/savedInquiryId above), don't write a second record for what
+  // is really the same confirmation/submission event.
+  if (inquiryState.confirmed && inquiryState.savedInquiryId) {
+    return {
+      success: true,
+      alreadySubmitted: true,
+      inquiryId: inquiryState.savedInquiryId,
+      inquiryState,
+    };
+  }
+
+  const fee = calculateInquiryFee({}, inquiryState);
+  const appliedPromotion = inquiryState.promotionId
+    ? findEligibleFeePromotion(inquiryState.promotionId).promotion
+    : null;
+
+  // The model never supplies these — both are generated here, by backend
+  // code, only at the moment a fully-gated confirmation is actually saved.
+  const inquiryId = crypto.randomUUID();
+  const timestamp = new Date().toISOString();
+
+  const record = {
+    inquiryId,
+    timestamp,
+    status: "NEW",
+    propertyId: property.id,
+    inquiryType: inquiryState.inquiryType,
+    preferredDate: inquiryState.preferredDate,
+    preferredTime: inquiryState.preferredTime,
+    customerDetails: { ...inquiryState.customerDetails },
+    message: inquiryState.message,
+    promotionId: appliedPromotion ? appliedPromotion.id : null,
+    fee: {
+      baseFee: fee.baseFee,
+      tax: fee.tax,
+      discount: fee.discount,
+      finalFee: fee.finalFee,
+      currency: fee.currency,
+    },
+    confirmed: true,
+  };
+
+  try {
+    appendInquiryRecord(record);
+  } catch (err) {
+    console.error("Failed to persist confirmed inquiry:", err);
+    return {
+      success: false,
+      error: "The inquiry could not be saved right now. Please try confirming again.",
+    };
+  }
+
   inquiryState.confirmed = true;
   inquiryState.status = "confirmed";
+  inquiryState.savedInquiryId = inquiryId;
 
-  return { success: true, inquiryState };
+  return { success: true, inquiryId, timestamp, status: "NEW", inquiryState };
 }
 
 const RESIDENTIAL_PROPERTY_TYPES = new Set(["apartment", "house", "villa", "townhouse", "condo"]);
@@ -848,9 +924,11 @@ const tools = [
     name: "viewInquiry",
     description:
       "Get a read-only snapshot of the user's current session inquiry state — selected property, " +
-      "inquiry type, preferred date/time, customer details provided so far, message, status, and " +
-      "confirmation status. Use this when the user asks to see, review, or confirm what's currently " +
-      "in their inquiry. Does not modify anything and never includes prices, totals, or discounts.",
+      "inquiry type, preferred date/time, customer details provided so far, message, status, " +
+      "confirmation status, and the saved inquiryId if this inquiry has already been confirmed and " +
+      "persisted (null otherwise). Use this when the user asks to see, review, or confirm what's " +
+      "currently in their inquiry, or asks for their inquiry id again. Does not modify anything and " +
+      "never includes prices, totals, or discounts.",
     input_schema: {
       type: "object",
       properties: {},
@@ -896,17 +974,19 @@ const tools = [
   {
     name: "confirmInquiry",
     description:
-      "Finalize the current inquiry/viewing request. Only call this after you have shown the full " +
-      "confirmation summary (from getInquiryConfirmationSummary) and the customer has given a clear, " +
-      "explicit confirmation such as 'yes', 'confirm', or 'that's correct' — never for vague replies " +
-      "like 'okay' or 'sounds good', and never based on silence or the absence of a correction. If the " +
-      "customer indicates anything is wrong, do not call this — use updatePropertyInquiry or " +
-      "removePropertyFromInquiry instead, then re-show the summary and get explicit confirmation again. " +
-      "Fails with a clear error (and never confirms) if required information is still missing, the " +
-      "selected property is no longer available, or — regardless of what the conversation seems to " +
-      "say — getInquiryConfirmationSummary has not been called for the inquiry since its last change. " +
-      "This last check is enforced by the backend itself, not inferred from the conversation, so a " +
-      "'yes' said before the summary was shown (or before a correction) can never finalize an inquiry.",
+      "Finalize AND permanently save the current inquiry/viewing request to data/inquiries.json. Only " +
+      "call this after you have shown the full confirmation summary (from getInquiryConfirmationSummary) " +
+      "and the customer has given a clear, explicit confirmation such as 'yes', 'confirm', or 'that's " +
+      "correct' — never for vague replies like 'okay' or 'sounds good', and never based on silence or " +
+      "the absence of a correction. If the customer indicates anything is wrong, do not call this — use " +
+      "updatePropertyInquiry or removePropertyFromInquiry instead, then re-show the summary and get " +
+      "explicit confirmation again. Fails with a clear error (and saves nothing) if required information " +
+      "is still missing, the selected property is no longer available, getInquiryConfirmationSummary has " +
+      "not been called for the inquiry since its last change, or the save itself fails — never claim the " +
+      "inquiry was submitted unless this tool returns success. On success, returns a backend-generated " +
+      "inquiryId, timestamp, and status \"NEW\" — always relay the exact inquiryId returned, never invent " +
+      "or reformat one. Calling this again with nothing changed since the last successful confirmation " +
+      "does not create a duplicate record — it returns the same inquiryId with alreadySubmitted: true.",
     input_schema: {
       type: "object",
       properties: {},
