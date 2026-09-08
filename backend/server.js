@@ -27,6 +27,8 @@ function createEmptyInquiryState() {
       name: null,
       email: null,
       phone: null,
+      address: null,
+      unit: null,
     },
     preferredDate: null,
     preferredTime: null,
@@ -144,6 +146,12 @@ function addPropertyToInquiry(input, inquiryState) {
 }
 
 const ALLOWED_INQUIRY_TYPES = new Set(["viewing", "information", "contact"]);
+const MIN_PHONE_DIGITS = 7;
+
+function isPlausiblePhoneNumber(phone) {
+  const digitCount = (phone.match(/\d/g) || []).length;
+  return digitCount >= MIN_PHONE_DIGITS;
+}
 
 function updatePropertyInquiry(input, inquiryState) {
   if (!input || typeof input !== "object") {
@@ -216,19 +224,32 @@ function updatePropertyInquiry(input, inquiryState) {
       input.customerDetails !== null &&
       !Array.isArray(input.customerDetails);
     if (!isPlainObject) {
-      return { success: false, error: "customerDetails must be an object with name, email, and/or phone." };
+      return {
+        success: false,
+        error: "customerDetails must be an object with name, email, phone, address, and/or unit.",
+      };
     }
     customerDetailsUpdates = {};
-    for (const field of ["name", "email", "phone"]) {
+    for (const field of ["name", "email", "phone", "address", "unit"]) {
       if (input.customerDetails[field] !== undefined) {
         if (typeof input.customerDetails[field] !== "string" || !input.customerDetails[field].trim()) {
           return { success: false, error: `customerDetails.${field} must be a non-empty string.` };
         }
-        customerDetailsUpdates[field] = input.customerDetails[field].trim();
+        const value = input.customerDetails[field].trim();
+        if (field === "phone" && !isPlausiblePhoneNumber(value)) {
+          return {
+            success: false,
+            error: "That phone number doesn't look valid. Please provide it again.",
+          };
+        }
+        customerDetailsUpdates[field] = value;
       }
     }
     if (Object.keys(customerDetailsUpdates).length === 0) {
-      return { success: false, error: "customerDetails must include at least one of name, email, or phone." };
+      return {
+        success: false,
+        error: "customerDetails must include at least one of name, email, phone, address, or unit.",
+      };
     }
   }
 
@@ -272,6 +293,7 @@ function removePropertyFromInquiry(input, inquiryState) {
 
 function getInquiryRequirements(inquiryState) {
   const customerName = (inquiryState.customerDetails && inquiryState.customerDetails.name) || null;
+  const customerPhone = (inquiryState.customerDetails && inquiryState.customerDetails.phone) || null;
 
   const missingRequired = [];
   if (!inquiryState.propertyId) {
@@ -280,6 +302,9 @@ function getInquiryRequirements(inquiryState) {
   if (!customerName) {
     missingRequired.push("customerName");
   }
+  if (!customerPhone) {
+    missingRequired.push("customerPhone");
+  }
 
   return {
     propertyId: inquiryState.propertyId,
@@ -287,12 +312,18 @@ function getInquiryRequirements(inquiryState) {
     preferredDate: inquiryState.preferredDate,
     preferredTime: inquiryState.preferredTime,
     customerName,
+    customerPhone,
+    customerAddress: (inquiryState.customerDetails && inquiryState.customerDetails.address) || null,
+    customerUnit: (inquiryState.customerDetails && inquiryState.customerDetails.unit) || null,
+    message: inquiryState.message,
     missingRequired,
     readyToSubmit: missingRequired.length === 0,
     notes:
-      "preferredTime is optional and never blocks readiness. Only ask the user for fields listed " +
-      "in missingRequired — never ask again for propertyId, preferredDate, preferredTime, or " +
-      "customerName once they are already set here.",
+      "preferredTime, customerAddress, customerUnit, and message/viewing instructions are optional " +
+      "and never block readiness — only ask for them if genuinely relevant, and never invent them. " +
+      "Only ask the user for fields listed in missingRequired — never ask again for anything already " +
+      "set here (including the property's own address/location, which always comes from the verified " +
+      "property data, never from the customer).",
   };
 }
 
@@ -502,14 +533,26 @@ const tools = [
         },
         preferredDate: { type: "string", description: "Customer-provided preferred date." },
         preferredTime: { type: "string", description: "Customer-provided preferred time." },
-        message: { type: "string", description: "Customer-provided message or preferences." },
+        message: {
+          type: "string",
+          description: "Customer-provided message, preferences, or optional viewing instructions " +
+            "(e.g. preferred entrance, accessibility needs, gate/building access notes). Never invent.",
+        },
         customerDetails: {
           type: "object",
-          description: "Any of the customer's contact details the user provided.",
+          description:
+            "Any of the customer's own contact/location details the user provided. Never guess or " +
+            "invent any of these. address and unit are for the CUSTOMER's own address/unit, not the " +
+            "property's — only include them if the customer actually provided one and it's genuinely " +
+            "relevant to the inquiry (e.g. needed for correspondence); do not ask for them otherwise. " +
+            "The property's own address/location always comes from the verified property data, never " +
+            "from the customer.",
           properties: {
             name: { type: "string" },
             email: { type: "string" },
-            phone: { type: "string" },
+            phone: { type: "string", description: "The customer's phone number, exactly as provided." },
+            address: { type: "string", description: "The customer's own address, only if genuinely required and provided by the customer." },
+            unit: { type: "string", description: "The customer's own apartment/unit number, only if applicable and provided by the customer." },
           },
         },
       },
@@ -549,12 +592,14 @@ const tools = [
     name: "getInquiryRequirements",
     description:
       "Check what's still needed before the user's current viewing request/inquiry could be " +
-      "submitted: the customer's name is required, a selected property is required, and preferred " +
-      "viewing date/time are optional and never block readiness. Use this before asking the user for " +
-      "any inquiry details, so you only ask for fields listed in the response's missingRequired array " +
-      "and never re-ask for information that's already set. Read-only — does not modify or submit " +
-      "anything, and readyToSubmit being true does NOT mean the inquiry is confirmed or submitted; " +
-      "explicit user confirmation is still required before that.",
+      "submitted: a selected property, the customer's name, and the customer's phone number are " +
+      "required; preferred viewing date/time, the customer's own address/unit, and any viewing " +
+      "instructions are optional and never block readiness. Use this before asking the user for any " +
+      "inquiry details, so you only ask for fields listed in the response's missingRequired array and " +
+      "never re-ask for information that's already set (this includes the property's own address, " +
+      "which comes from the verified property data, not the customer). Read-only — does not modify or " +
+      "submit anything, and readyToSubmit being true does NOT mean the inquiry is confirmed or " +
+      "submitted; explicit user confirmation is still required before that.",
     input_schema: {
       type: "object",
       properties: {},
