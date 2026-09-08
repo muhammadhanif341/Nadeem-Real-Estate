@@ -37,6 +37,7 @@ function createEmptyInquiryState() {
     total: null,
     promotionId: null,
     confirmed: false,
+    summaryAcknowledged: false,
     status: "draft",
     declinedPropertyIds: [],
   };
@@ -138,6 +139,7 @@ function addPropertyToInquiry(input, inquiryState) {
   inquiryState.propertyName = property.name;
   inquiryState.status = "draft";
   inquiryState.confirmed = false;
+  inquiryState.summaryAcknowledged = false;
 
   return {
     success: true,
@@ -274,6 +276,11 @@ function updatePropertyInquiry(input, inquiryState) {
     Object.assign(inquiryState.customerDetails, customerDetailsUpdates);
   }
 
+  // Any successful update invalidates whatever summary was last shown, so the
+  // confirmation gate (see confirmInquiry) requires a fresh
+  // getInquiryConfirmationSummary call — and a new explicit confirmation —
+  // before this inquiry can be confirmed again.
+  inquiryState.summaryAcknowledged = false;
   if (inquiryState.confirmed) {
     inquiryState.confirmed = false;
     inquiryState.status = "draft";
@@ -304,6 +311,7 @@ function removePropertyFromInquiry(input, inquiryState) {
   inquiryState.propertyName = null;
   inquiryState.status = "draft";
   inquiryState.confirmed = false;
+  inquiryState.summaryAcknowledged = false;
 
   return { success: true, removedPropertyId: property.id, inquiryState };
 }
@@ -385,6 +393,15 @@ function getInquiryConfirmationSummary(inquiryState) {
 
   const fee = calculateInquiryFee({}, inquiryState);
 
+  // Arms the confirmation gate enforced by confirmInquiry: only a genuinely
+  // complete summary (readyToSubmit) counts as "the customer has had the
+  // chance to review it". Any subsequent change to the inquiry (see
+  // addPropertyToInquiry/updatePropertyInquiry/removePropertyFromInquiry)
+  // disarms it again, so a stale "yes" from earlier in the conversation can
+  // never confirm a summary that was never actually shown for the current
+  // state. This never changes any inquiry content — only this bookkeeping.
+  inquiryState.summaryAcknowledged = requirements.readyToSubmit;
+
   return {
     readyForConfirmation: requirements.readyToSubmit,
     missingRequired: requirements.missingRequired,
@@ -458,6 +475,24 @@ function confirmInquiry(inquiryState) {
     return {
       success: false,
       error: `"${property.name}" is no longer available (${property.availability}). Please choose a different property before confirming.`,
+    };
+  }
+
+  // Backend-enforced confirmation gate: this can only succeed if
+  // getInquiryConfirmationSummary was called for the inquiry in its
+  // *current* form. Any modification since then clears this flag (see
+  // addPropertyToInquiry/updatePropertyInquiry/removePropertyFromInquiry),
+  // so an earlier "yes" — or any confirmation attempt not preceded by the
+  // current summary — is rejected regardless of what the model believes
+  // the customer meant. This is intentionally independent of the model's
+  // own judgment about the conversation.
+  if (!inquiryState.summaryAcknowledged) {
+    return {
+      success: false,
+      error:
+        "The complete confirmation summary hasn't been shown for the inquiry in its current form yet. " +
+        "Call getInquiryConfirmationSummary, show it to the customer, and get their explicit " +
+        "confirmation before calling this again.",
     };
   }
 
@@ -848,8 +883,11 @@ const tools = [
       "the deterministic fee/tax/discount breakdown — using only what's actually stored in the session " +
       "plus backend-verified data. Call this before asking for final confirmation, and again after any " +
       "correction (it automatically recalculates fees/promotion). Read this tool's own `notes` field " +
-      "for exactly how to present the summary and what counts as explicit confirmation. Read-only — " +
-      "never modifies or submits anything by itself.",
+      "for exactly how to present the summary and what counts as explicit confirmation. This call must " +
+      "immediately precede asking for confirmation — calling it internally arms the backend's " +
+      "confirmation gate for confirmInquiry, and any further change to the inquiry disarms it again, " +
+      "so confirmInquiry cannot succeed on a stale confirmation from earlier in the conversation. Never " +
+      "modifies the inquiry's own content or submits anything by itself.",
     input_schema: {
       type: "object",
       properties: {},
@@ -864,8 +902,11 @@ const tools = [
       "like 'okay' or 'sounds good', and never based on silence or the absence of a correction. If the " +
       "customer indicates anything is wrong, do not call this — use updatePropertyInquiry or " +
       "removePropertyFromInquiry instead, then re-show the summary and get explicit confirmation again. " +
-      "Fails with a clear error (and never confirms) if required information is still missing or the " +
-      "selected property is no longer available.",
+      "Fails with a clear error (and never confirms) if required information is still missing, the " +
+      "selected property is no longer available, or — regardless of what the conversation seems to " +
+      "say — getInquiryConfirmationSummary has not been called for the inquiry since its last change. " +
+      "This last check is enforced by the backend itself, not inferred from the conversation, so a " +
+      "'yes' said before the summary was shown (or before a correction) can never finalize an inquiry.",
     input_schema: {
       type: "object",
       properties: {},
