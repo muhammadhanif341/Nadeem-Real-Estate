@@ -118,6 +118,14 @@ function getAvailableProperties() {
   return readProperties().filter(isAvailable);
 }
 
+// Inquiry storage: reads/writes confirmed real-estate inquiries to
+// data/inquiries.json.
+//
+// This file-based storage is for development/demo purposes only. Vercel
+// serverless functions do not guarantee persistent file writes in
+// production (the filesystem is ephemeral/read-only per invocation) — a
+// production deployment should use a proper persistent database or
+// external storage solution instead.
 const INQUIRIES_FILE_PATH = path.join(__dirname, "..", "data", "inquiries.json");
 
 function readInquiriesFile() {
