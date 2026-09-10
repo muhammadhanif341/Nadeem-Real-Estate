@@ -81,6 +81,30 @@ export function ContactSection() {
           >
             Send an Email
           </a>
+
+          <div
+            role="group"
+            aria-label="Nadeem Real Estate location on Google Maps"
+            className="mt-6 rounded-lg border border-text-inverse/15 bg-text-inverse/[0.06] p-6"
+          >
+            <h3 className="text-[1.1rem] text-text-inverse">Visit Us</h3>
+            <p className="mt-1 text-[0.9rem] font-semibold text-accent-light">
+              Nadeem Real Estate &middot; Attock
+            </p>
+            <p className="mt-2 text-[0.9rem] text-text-inverse/75">
+              Find our official location on Google Maps and get directions
+              straight to our office.
+            </p>
+            <a
+              href="https://maps.google.com/maps?vet=10CAAQoqAOahcKEwiQleryruKWAxUAAAAAHQAAAAAQTA..i&pvq=Cg0vZy8xMXdxeTVmNTd4IhgKEm5hZGVlbSByZWFsIGVzdGF0ZRACGAM&lqi=ChluYWRlZW0gcmVhbCBlc3RhdGUgYXR0b2NrSPyp2tLbu4CACFonEAAQARACGAAYARgDIhluYWRlZW0gcmVhbCBlc3RhdGUgYXR0b2NrkgEQY29ycG9yYXRlX29mZmljZQ&fvr=1&cs=1&um=1&ie=UTF-8&fb=1&gl=sa&sa=X&ftid=0x38df19001b046da9:0x7d62fbe4a2a4fa49"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open Nadeem Real Estate location and get directions on Google Maps (opens in a new tab)"
+              className="mt-4 flex w-full items-center justify-center rounded-sm border-[1.5px] border-accent bg-accent px-6 py-3.5 text-sm font-semibold text-primary-dark transition-all hover:-translate-y-0.5 hover:border-accent-dark hover:bg-accent-dark hover:text-white hover:shadow-md"
+            >
+              Open in Google Maps — Get Directions
+            </a>
+          </div>
         </div>
       </div>
     </section>
