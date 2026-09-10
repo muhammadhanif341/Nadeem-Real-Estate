@@ -454,35 +454,20 @@ button:focus-visible,
   position: relative;
 }
 
-.about-frame {
-  aspect-ratio: 3 / 4;
+.about-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
   border-radius: var(--radius-lg);
-  background: linear-gradient(155deg, var(--color-bg-alt) 0%, var(--color-border) 100%);
   border: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
   box-shadow: var(--shadow-md);
-}
-
-.about-frame-label {
-  font-family: var(--font-heading);
-  font-size: 2.2rem;
-  color: var(--color-primary);
-}
-
-.about-frame-sub {
-  font-size: 0.75rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
 }
 
 .about-badge {
   position: absolute;
-  bottom: -24px;
+  bottom: -68px;
   right: -20px;
   background: var(--color-primary);
   color: var(--color-text-inverse);
@@ -772,6 +757,61 @@ button:focus-visible,
 .contact-cta-card p {
   color: rgba(244, 241, 234, 0.75);
   font-size: 0.94rem;
+}
+
+/* ---- Map / Visit Us ---- */
+
+.map-card {
+  margin: 56px auto 0;
+  max-width: 640px;
+  text-align: center;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  box-shadow: var(--shadow-md);
+}
+
+.map-card-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.map-card-title {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--color-primary);
+}
+
+.map-card-location {
+  margin: 0 0 12px;
+  font-weight: 600;
+  color: var(--color-accent-text);
+}
+
+.map-card-note {
+  color: var(--color-text-muted);
+  font-size: 0.94rem;
+  margin: 0 0 24px;
+  max-width: 42ch;
+}
+
+.map-directions-btn {
+  width: auto;
+  min-width: 260px;
+}
+
+@media (max-width: 480px) {
+  .map-card {
+    padding: 24px 20px;
+    margin: 40px auto 0;
+  }
+
+  .map-directions-btn {
+    width: 100%;
+  }
 }
 
 /* ==========================================================================
@@ -1107,7 +1147,7 @@ button:focus-visible,
   }
 
   .about-visual {
-    max-width: 340px;
+    max-width: 520px;
     margin: 0 auto 48px;
   }
 

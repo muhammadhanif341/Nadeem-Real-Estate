@@ -1,0 +1,135 @@
+/* ==========================================================================
+   Staff Inquiries Dashboard — minimal, reuses tokens from styles.css
+   ========================================================================== */
+
+.dashboard-body {
+  background: var(--color-bg-alt);
+}
+
+.dashboard-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dashboard-header-inner {
+  min-height: var(--header-height);
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.dashboard-title {
+  margin: 0;
+  font-size: 1.3rem;
+  padding-left: 20px;
+  border-left: 1px solid var(--color-border);
+}
+
+.dashboard-main {
+  padding: 48px 0 80px;
+}
+
+.dashboard-state {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: 60px 20px;
+  font-size: 1rem;
+}
+
+.dashboard-state--error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.table-wrap {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+}
+
+.inquiries-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  min-width: 1100px;
+}
+
+.inquiries-table th,
+.inquiries-table td {
+  text-align: left;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.inquiries-table th {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: var(--color-bg-alt);
+  white-space: nowrap;
+}
+
+.inquiries-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.inquiries-table tbody tr:hover {
+  background: var(--color-bg-alt);
+}
+
+.cell-muted {
+  color: var(--color-text-muted);
+}
+
+.cell-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.status-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+  white-space: nowrap;
+}
+
+.status-badge--NEW { background: #e6edf7; color: #274462; }
+.status-badge--CONTACTED { background: #fdf1d9; color: var(--color-accent-text); }
+.status-badge--VIEWING_SCHEDULED { background: #e3ecdf; color: #3a5a40; }
+.status-badge--COMPLETED { background: #12233b; color: var(--color-text-inverse); }
+.status-badge--CANCELLED { background: #f4dede; color: #7a2a2a; }
+
+.status-select {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.status-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status-error {
+  color: #a3312f;
+  font-size: 0.78rem;
+  margin-top: 6px;
+  max-width: 180px;
+}

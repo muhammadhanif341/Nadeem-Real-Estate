@@ -71,6 +71,18 @@
 
   closeBtn.addEventListener('click', closeChat);
 
+  document.querySelectorAll('.js-inquire-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var propertyId = btn.getAttribute('data-property-id');
+      var propertyName = btn.getAttribute('data-property-name');
+      openChat();
+      if (propertyId && propertyName) {
+        chatInput.value = "I'm interested in the " + propertyName + " (" + propertyId + ").";
+      }
+      chatInput.focus();
+    });
+  });
+
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && isOpen()) {
       closeChat();

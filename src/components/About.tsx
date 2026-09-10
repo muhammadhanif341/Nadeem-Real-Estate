@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 const values = [
   {
     title: "Proven Expertise",
@@ -17,12 +19,16 @@ export function About() {
   return (
     <section id="about" className="scroll-mt-24 bg-surface px-6 py-24">
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-16 lg:grid-cols-[0.85fr_1.15fr]">
-        <div className="relative mx-auto max-w-[340px] lg:mx-0 lg:max-w-none">
-          <div className="flex aspect-[3/4] flex-col items-center justify-center gap-1.5 rounded-lg border border-border bg-gradient-to-br from-bg-alt to-border shadow-md">
-            <span className="font-heading text-4xl text-primary">Nadeem</span>
-            <span className="text-xs tracking-[0.14em] text-text-muted uppercase">
-              Real Estate Consultant
-            </span>
+        <div className="relative mx-auto w-full max-w-[480px] lg:mx-0 lg:max-w-none">
+          <div className="relative aspect-[3/2] overflow-hidden rounded-lg border border-border shadow-md">
+            <Image
+              src="/images/team/nadeem.png"
+              alt="Nadeem Real Estate Attock team presentation — Nadeem at his desk, with the Nadeem Real Estate Attock logo and services (Buy, Sell, Rent, Invest)"
+              fill
+              sizes="(min-width: 1024px) 40vw, (min-width: 640px) 480px, 100vw"
+              className="object-cover"
+              priority
+            />
           </div>
           <div className="absolute right-0 -bottom-6 left-0 mx-auto flex w-fit min-w-[140px] flex-col rounded-md bg-primary px-[22px] py-[18px] shadow-md sm:right-[-20px] sm:left-auto">
             <strong className="font-heading text-2xl text-accent-light">

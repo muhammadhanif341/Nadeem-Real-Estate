@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staff Dashboard | Nadeem Real Estate Consultant</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body class="dashboard-body">
+
+<header class="dashboard-header">
+  <div class="container dashboard-header-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark">N</span>
+      <span class="brand-text">
+        <span class="brand-name">Nadeem</span>
+        <span class="brand-tagline">Real Estate Consultant</span>
+      </span>
+    </a>
+    <h1 class="dashboard-title">Inquiries Dashboard</h1>
+  </div>
+</header>
+
+<main class="dashboard-main">
+  <div class="container">
+
+    <p id="dashboardLoading" class="dashboard-state">Loading inquiries…</p>
+
+    <div id="dashboardError" class="dashboard-state dashboard-state--error" hidden>
+      <p>Unable to load inquiries right now.</p>
+      <button type="button" id="dashboardRetryBtn" class="btn btn-outline">Retry</button>
+    </div>
+
+    <p id="dashboardEmpty" class="dashboard-state" hidden>No inquiries yet.</p>
+
+    <div class="table-wrap" id="dashboardTableWrap" hidden>
+      <table class="inquiries-table">
+        <thead>
+          <tr>
+            <th scope="col">Inquiry ID</th>
+            <th scope="col">Property</th>
+            <th scope="col">Inquiry Type</th>
+            <th scope="col">Viewing Date</th>
+            <th scope="col">Preferred Time</th>
+            <th scope="col">Customer</th>
+            <th scope="col">Phone</th>
+            <th scope="col">Notes</th>
+            <th scope="col">Promotion</th>
+            <th scope="col">Fee</th>
+            <th scope="col">Submitted</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody id="dashboardTableBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<script src="dashboard.js"></script>
+</body>
+</html>
