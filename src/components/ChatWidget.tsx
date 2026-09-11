@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { MessageSquare, Send, X } from "lucide-react";
 
 interface ChatMessage {
@@ -9,37 +9,56 @@ interface ChatMessage {
   text: string;
 }
 
+interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+const ERROR_REPLY = "Sorry, something went wrong. Please try again in a moment.";
+
 /**
- * Ported 1:1 from the original app.js mock chat widget. Still a mock —
- * CLAUDE.md's planned backend/ (ANTHROPIC_API_KEY in .env.example) isn't
- * built yet. Once it is, replace handleSubmit's setTimeout with a fetch to
- * an /api/chat route that calls the Anthropic API server-side (never
- * expose that key to the client).
+ * Talks to /api/chat, the real Claude-powered support agent (ported from
+ * backend/server.js — see that file's history for the tool/inquiry design).
+ * conversationHistory is kept client-side and sent as "everything before
+ * this message", matching the contract the legacy frontend/app.js chat
+ * already used against the same backend logic.
  */
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sending, setSending] = useState(false);
+  const conversationHistory = useRef<ConversationTurn[]>([]);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    if (!text) return;
+    if (!text || sending) return;
 
-    const userMessage: ChatMessage = { id: Date.now(), sender: "user", text };
-    setMessages((prev) => [...prev, userMessage]);
+    const historyForRequest = conversationHistory.current.slice();
+
+    setMessages((prev) => [...prev, { id: Date.now(), sender: "user", text }]);
+    conversationHistory.current.push({ role: "user", content: text });
     setInput("");
+    setSending(true);
 
-    window.setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          sender: "bot",
-          text: "Hi! I'm Muhammad Nadeem. My AI brain isn't connected yet.",
-        },
-      ]);
-    }, 600);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, conversationHistory: historyForRequest }),
+      });
+      if (!response.ok) throw new Error("Chat request failed");
+      const data = await response.json();
+      if (!data.reply) throw new Error("Chat response missing reply");
+
+      setMessages((prev) => [...prev, { id: Date.now() + 1, sender: "bot", text: data.reply }]);
+      conversationHistory.current.push({ role: "assistant", content: data.reply });
+    } catch {
+      setMessages((prev) => [...prev, { id: Date.now() + 1, sender: "bot", text: ERROR_REPLY }]);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -94,6 +113,11 @@ export function ChatWidget() {
                 </div>
               ))
             )}
+            {sending ? (
+              <div className="max-w-[80%] self-start rounded-md rounded-bl-sm border border-border bg-surface px-3.5 py-2.5 text-sm text-text-muted">
+                Typing…
+              </div>
+            ) : null}
           </div>
 
           <form
@@ -110,12 +134,14 @@ export function ChatWidget() {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Type your message…"
               autoComplete="off"
-              className="min-w-0 flex-1 rounded-full border border-border bg-bg px-4 py-2.5 text-sm"
+              disabled={sending}
+              className="min-w-0 flex-1 rounded-full border border-border bg-bg px-4 py-2.5 text-sm disabled:opacity-60"
             />
             <button
               type="submit"
               aria-label="Send message"
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent text-primary-dark hover:bg-accent-dark hover:text-white"
+              disabled={sending}
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent text-primary-dark hover:bg-accent-dark hover:text-white disabled:opacity-60"
             >
               <Send size={18} />
             </button>
