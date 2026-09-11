@@ -68,11 +68,15 @@ export default async function PropertyDetailPage({
           ...(listing.bedrooms !== null
             ? { numberOfRooms: listing.bedrooms }
             : {}),
-          floorSize: {
-            "@type": "QuantitativeValue",
-            value: listing.areaSqft,
-            unitCode: "FTK",
-          },
+          ...(listing.areaSqft !== undefined
+            ? {
+                floorSize: {
+                  "@type": "QuantitativeValue",
+                  value: listing.areaSqft,
+                  unitCode: "FTK",
+                },
+              }
+            : {}),
         }}
       />
 
@@ -98,7 +102,7 @@ export default async function PropertyDetailPage({
             <p className="mt-1 text-text-muted">{listing.location}</p>
 
             <div className="mt-4 font-heading text-3xl font-bold tabular-nums text-accent-dark">
-              {formatPrice(listing.price)}
+              {formatPrice(listing.price, listing.currency)}
             </div>
 
             {listing.bedrooms !== null ? (
@@ -116,9 +120,11 @@ export default async function PropertyDetailPage({
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-text-muted uppercase">Area</dt>
+                  <dt className="text-text-muted uppercase">
+                    {listing.landSize ? "Size" : "Area"}
+                  </dt>
                   <dd className="text-lg font-semibold">
-                    {listing.areaSqft.toLocaleString()} sqft
+                    {listing.landSize ?? `${listing.areaSqft?.toLocaleString()} sqft`}
                   </dd>
                 </div>
               </dl>
@@ -127,11 +133,24 @@ export default async function PropertyDetailPage({
                 <div>
                   <dt className="text-text-muted uppercase">Lot size</dt>
                   <dd className="text-lg font-semibold">
-                    {listing.areaSqft.toLocaleString()} sqft
+                    {listing.landSize ?? `${listing.areaSqft?.toLocaleString()} sqft`}
                   </dd>
                 </div>
               </dl>
             )}
+
+            {listing.features && listing.features.length > 0 ? (
+              <ul className="mt-5 flex flex-wrap gap-2">
+                {listing.features.map((feature) => (
+                  <li
+                    key={feature}
+                    className="rounded-full border border-border bg-bg-alt px-3 py-1.5 text-xs font-semibold text-text-muted"
+                  >
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             <p className="mt-6 text-text-muted">{listing.longDescription}</p>
           </div>
@@ -162,7 +181,7 @@ export default async function PropertyDetailPage({
             </div>
           </div>
 
-          <MortgageCalculator price={listing.price} />
+          <MortgageCalculator price={listing.price} currency={listing.currency} />
         </aside>
       </div>
     </main>

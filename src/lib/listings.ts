@@ -21,14 +21,21 @@ export interface Listing {
   slug: string;
   type: PropertyType;
   price: number;
-  currency: "USD";
+  currency: "USD" | "PKR";
   name: string;
   location: string;
   description: string;
   longDescription: string;
   bedrooms: number | null;
   bathrooms: number | null;
-  areaSqft: number;
+  /** Omit when the verified size is only known in a non-sqft unit — see landSize. */
+  areaSqft?: number;
+  /** Verbatim size label (e.g. "7.5 Marla") for listings not measured in sqft. */
+  landSize?: string;
+  /** Short factual tags not covered by bedrooms/bathrooms/area, e.g. "2 TV Lounges". */
+  features?: string[];
+  /** Real photo path, once available; falls back to imageGradient when absent. */
+  image?: string;
   /** Tailwind gradient classes used until real photography is available. */
   imageGradient: string;
   featured: boolean;
@@ -141,6 +148,26 @@ export const listings: Listing[] = [
     bathrooms: null,
     areaSqft: 43560,
     imageGradient: "from-[#96741f] to-[#4a3a12]",
+    featured: false,
+  },
+  {
+    id: "7",
+    slug: "7-5-marla-family-house-abdullah-block",
+    type: "Family Home",
+    price: 285000,
+    currency: "PKR",
+    name: "7.5 Marla Family House for Sale",
+    location: "Abdullah Block, Mehria Town, Attock",
+    description:
+      "4-bedroom, 5-bathroom family house on a 7.5 Marla plot in Abdullah Block, Mehria Town, with 2 TV lounges and a 1-car porch.",
+    longDescription:
+      "This 7.5 Marla family house in Abdullah Block, Mehria Town, Attock offers 4 bedrooms and 5 bathrooms across the property, with 2 separate TV lounges and a 1-car porch.",
+    bedrooms: 4,
+    bathrooms: 5,
+    landSize: "7.5 Marla",
+    features: ["2 TV Lounges", "1 Car Porch"],
+    image: "/images/properties/family-house/7-5-marla-house-abdullah-block.jpg",
+    imageGradient: "from-[#3a2a12] to-[#12233b]",
     featured: false,
   },
 ];

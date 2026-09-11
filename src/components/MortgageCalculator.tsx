@@ -4,7 +4,13 @@ import { useMemo, useState } from "react";
 import { calculateMortgage } from "@/lib/mortgage";
 import { formatPrice } from "@/lib/format";
 
-export function MortgageCalculator({ price }: { price: number }) {
+export function MortgageCalculator({
+  price,
+  currency = "USD",
+}: {
+  price: number;
+  currency?: "USD" | "PKR";
+}) {
   const [downPaymentPct, setDownPaymentPct] = useState(20);
   const [annualRatePct, setAnnualRatePct] = useState(6.5);
   const [termYears, setTermYears] = useState(30);
@@ -78,7 +84,7 @@ export function MortgageCalculator({ price }: { price: number }) {
         <div>
           <dt className="text-xs text-text-muted uppercase">Loan amount</dt>
           <dd className="font-heading text-lg font-bold tabular-nums text-primary">
-            {formatPrice(result.loanAmount)}
+            {formatPrice(result.loanAmount, currency)}
           </dd>
         </div>
         <div>
@@ -86,7 +92,7 @@ export function MortgageCalculator({ price }: { price: number }) {
             Monthly payment
           </dt>
           <dd className="font-heading text-lg font-bold tabular-nums text-accent-dark">
-            {formatPrice(result.monthlyPayment)}
+            {formatPrice(result.monthlyPayment, currency)}
           </dd>
         </div>
         <div>
@@ -94,7 +100,7 @@ export function MortgageCalculator({ price }: { price: number }) {
             Total interest
           </dt>
           <dd className="font-heading text-lg font-bold tabular-nums text-primary">
-            {formatPrice(result.totalInterest)}
+            {formatPrice(result.totalInterest, currency)}
           </dd>
         </div>
       </dl>

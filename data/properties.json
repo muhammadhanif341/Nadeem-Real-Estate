@@ -224,6 +224,22 @@
       "images": ["properties/prop-015-1.jpg", "properties/prop-015-2.jpg"],
       "agent": "Nadeem",
       "availability": "For Rent"
+    },
+    {
+      "id": "prop-016",
+      "name": "7.5 Marla Family House for Sale",
+      "description": "A 4-bedroom, 5-bathroom family house on a 7.5 Marla plot in Abdullah Block, Mehria Town, Attock, with 2 TV lounges and a 1-car porch.",
+      "price": 285000,
+      "currency": "PKR",
+      "location": "Abdullah Block, Mehria Town, Attock",
+      "propertyType": "House",
+      "bedrooms": 4,
+      "bathrooms": 5,
+      "landSize": "7.5 Marla",
+      "features": ["2 TV Lounges", "1 Car Porch"],
+      "images": ["properties/family-house/7-5-marla-house-abdullah-block.jpg"],
+      "agent": "Nadeem",
+      "availability": "For Sale"
     }
   ]
 }

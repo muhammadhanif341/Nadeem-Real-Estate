@@ -112,11 +112,16 @@ interface Property {
   name: string;
   description: string;
   price: number;
+  /** ISO currency code for `price`; omitted means USD (all pre-existing listings). */
+  currency?: string;
   location: string;
   propertyType: string;
   bedrooms: number;
   bathrooms: number;
-  area: number;
+  /** Square feet. Omitted for listings only measured in a non-sqft unit — see landSize. */
+  area?: number;
+  /** Verbatim size label (e.g. "7.5 Marla") for listings not measured in sqft. */
+  landSize?: string;
   features: string[];
   images: string[];
   agent: string;
