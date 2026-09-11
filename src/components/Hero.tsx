@@ -1,9 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 import { siteConfig } from "@/lib/site";
 
 export function Hero() {
-  const bars = [46, 78, 58, 96, 66, 88, 50, 72];
-
   return (
     <section
       id="home"
@@ -53,18 +52,16 @@ export function Hero() {
           </dl>
         </div>
 
-        <div aria-hidden="true" className="order-first lg:order-last">
-          <div className="relative aspect-[16/9] overflow-hidden rounded-lg bg-gradient-to-br from-primary via-primary-light to-accent-dark shadow-lg lg:aspect-[4/3.2]">
-            <div className="absolute top-8 right-11 h-14 w-14 rounded-full bg-[radial-gradient(circle,var(--color-accent-light),var(--color-accent)_70%)] opacity-90" />
-            <div className="absolute right-7 bottom-7 left-7 flex h-[58%] items-end gap-2.5">
-              {bars.map((height, i) => (
-                <span
-                  key={i}
-                  className="block flex-1 rounded-t-sm border-t-2 border-accent-light/55 bg-text-inverse/15"
-                  style={{ height: `${height}%` }}
-                />
-              ))}
-            </div>
+        <div className="order-first lg:order-last">
+          <div className="relative aspect-[16/9] overflow-hidden rounded-lg shadow-lg lg:aspect-[4/3.2]">
+            <Image
+              src="/images/team/hero.jpg"
+              alt="Exterior of a Nadeem Real Estate property in Attock"
+              fill
+              sizes="(min-width: 1024px) 45vw, (min-width: 640px) 90vw, 100vw"
+              className="object-cover"
+              priority
+            />
           </div>
         </div>
       </div>
