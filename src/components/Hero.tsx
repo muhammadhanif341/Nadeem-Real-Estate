@@ -55,7 +55,7 @@ export function Hero() {
         <div className="order-first lg:order-last">
           <div className="relative aspect-[16/9] overflow-hidden rounded-lg shadow-lg lg:aspect-[4/3.2]">
             <Image
-              src="/images/team/hero.jpg"
+              src="/images/team/main-hero/nadeem-hero-cropped.jpg"
               alt="Exterior of a Nadeem Real Estate property in Attock"
               fill
               sizes="(min-width: 1024px) 45vw, (min-width: 640px) 90vw, 100vw"
